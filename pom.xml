@@ -14,9 +14,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
--->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+--><project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
   <parent>
     <groupId>org.apache</groupId>
@@ -48,7 +46,7 @@ limitations under the License.
 
     <avro.version>1.7.4</avro.version>
     <elasticsearch.version>0.90.1</elasticsearch.version>
-    <hadoop2.version>2.4.0</hadoop2.version>
+    <hadoop2.version>2.5.0-cdh5.3.2</hadoop2.version>
     <thrift.version>0.7.0</thrift.version>
     <kite.version>1.0.0</kite.version>
     <hive.version>1.0.0</hive.version>
@@ -71,6 +69,7 @@ limitations under the License.
     <module>flume-ng-tests</module>
     <module>flume-tools</module>
     <module>flume-ng-auth</module>
+    <module>flume-dip-extension</module>
   </modules>
 
   <profiles>
