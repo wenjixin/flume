@@ -17,21 +17,23 @@
  */
 package org.apache.flume.sink.hdfs;
 
-import com.google.common.base.Preconditions;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
+
 import org.apache.flume.Context;
 import org.apache.flume.FlumeException;
 import org.apache.flume.annotations.InterfaceAudience;
 import org.apache.flume.annotations.InterfaceStability;
+import org.apache.hadoop.crypto.CryptoOutputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hdfs.DFSOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
+import com.google.common.base.Preconditions;
 
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
@@ -43,9 +45,9 @@ public abstract class AbstractHDFSWriter implements HDFSWriter {
   private FSDataOutputStream outputStream;
   private FileSystem fs;
   private Path destPath;
-  private Method refGetNumCurrentReplicas = null;
-  private Method refGetDefaultReplication = null;
-  private Method refHflushOrSync = null;
+//  private Method refGetNumCurrentReplicas = null;
+//  private Method refGetDefaultReplication = null;
+//  private Method refHflushOrSync = null;
   private Integer configuredMinReplicas = null;
   private Integer numberOfCloseRetries = null;
   private long timeBetweenCloseRetries = Long.MAX_VALUE;
@@ -98,6 +100,8 @@ public abstract class AbstractHDFSWriter implements HDFSWriter {
       logger.error("Unexpected error while checking replication factor", e);
     } catch (IllegalArgumentException e) {
       logger.error("Unexpected error while checking replication factor", e);
+    } catch (IOException e) {
+        logger.error("Unexpected error while checking replication factor", e);
     }
     return false;
   }
@@ -111,9 +115,9 @@ public abstract class AbstractHDFSWriter implements HDFSWriter {
     this.outputStream = outputStream;
     this.fs = fs;
     this.destPath = destPath;
-    this.refGetNumCurrentReplicas = reflectGetNumCurrentReplicas(outputStream);
-    this.refGetDefaultReplication = reflectGetDefaultReplication(fs);
-    this.refHflushOrSync = reflectHflushOrSync(outputStream);
+//    this.refGetNumCurrentReplicas = reflectGetNumCurrentReplicas(outputStream);
+//    this.refGetDefaultReplication = reflectGetDefaultReplication(fs);
+//    this.refHflushOrSync = reflectHflushOrSync(outputStream);
 
   }
 
@@ -121,25 +125,14 @@ public abstract class AbstractHDFSWriter implements HDFSWriter {
     this.outputStream = null;
     this.fs = null;
     this.destPath = null;
-    this.refGetNumCurrentReplicas = null;
-    this.refGetDefaultReplication = null;
+//    this.refGetNumCurrentReplicas = null;
+//    this.refGetDefaultReplication = null;
   }
 
   public int getFsDesiredReplication() {
     short replication = 0;
     if (fs != null && destPath != null) {
-      if (refGetDefaultReplication != null) {
-        try {
-          replication = (Short) refGetDefaultReplication.invoke(fs, destPath);
-        } catch (IllegalAccessException e) {
-          logger.warn("Unexpected error calling getDefaultReplication(Path)", e);
-        } catch (InvocationTargetException e) {
-          logger.warn("Unexpected error calling getDefaultReplication(Path)", e);
-        }
-      } else {
-        // will not work on Federated HDFS (see HADOOP-8014)
-        replication = fs.getDefaultReplication();
-      }
+        fs.getDefaultReplication(destPath);
     }
     return replication;
   }
@@ -155,101 +148,102 @@ public abstract class AbstractHDFSWriter implements HDFSWriter {
    * @throws InvocationTargetException
    * @throws IllegalAccessException
    * @throws IllegalArgumentException
+ * @throws IOException 
    */
   public int getNumCurrentReplicas()
       throws IllegalArgumentException, IllegalAccessException,
-          InvocationTargetException {
-    if (refGetNumCurrentReplicas != null && outputStream != null) {
+          InvocationTargetException, IOException {
+    if (outputStream != null) {
       OutputStream dfsOutputStream = outputStream.getWrappedStream();
       if (dfsOutputStream != null) {
-        Object repl = refGetNumCurrentReplicas.invoke(dfsOutputStream, NO_ARGS);
-        if (repl instanceof Integer) {
-          return ((Integer)repl).intValue();
-        }
+          if (dfsOutputStream instanceof CryptoOutputStream) {
+              dfsOutputStream = ((CryptoOutputStream) dfsOutputStream).getWrappedStream();
+          }
+         return ((DFSOutputStream) dfsOutputStream).getCurrentBlockReplication();
       }
     }
     return -1;
   }
-
-  /**
-   * Find the 'getNumCurrentReplicas' on the passed <code>os</code> stream.
-   * @return Method or null.
-   */
-  private Method reflectGetNumCurrentReplicas(FSDataOutputStream os) {
-    Method m = null;
-    if (os != null) {
-      Class<? extends OutputStream> wrappedStreamClass = os.getWrappedStream()
-          .getClass();
-      try {
-        m = wrappedStreamClass.getDeclaredMethod("getNumCurrentReplicas",
-            new Class<?>[] {});
-        m.setAccessible(true);
-      } catch (NoSuchMethodException e) {
-        logger.info("FileSystem's output stream doesn't support"
-            + " getNumCurrentReplicas; --HDFS-826 not available; fsOut="
-            + wrappedStreamClass.getName() + "; err=" + e);
-      } catch (SecurityException e) {
-        logger.info("Doesn't have access to getNumCurrentReplicas on "
-            + "FileSystems's output stream --HDFS-826 not available; fsOut="
-            + wrappedStreamClass.getName(), e);
-        m = null; // could happen on setAccessible()
-      }
-    }
-    if (m != null) {
-      logger.debug("Using getNumCurrentReplicas--HDFS-826");
-    }
-    return m;
-  }
-
-  /**
-   * Find the 'getDefaultReplication' method on the passed <code>fs</code>
-   * FileSystem that takes a Path argument.
-   * @return Method or null.
-   */
-  private Method reflectGetDefaultReplication(FileSystem fileSystem) {
-    Method m = null;
-    if (fileSystem != null) {
-      Class<?> fsClass = fileSystem.getClass();
-      try {
-        m = fsClass.getMethod("getDefaultReplication",
-            new Class<?>[] { Path.class });
-      } catch (NoSuchMethodException e) {
-        logger.debug("FileSystem implementation doesn't support"
-            + " getDefaultReplication(Path); -- HADOOP-8014 not available; " +
-            "className = " + fsClass.getName() + "; err = " + e);
-      } catch (SecurityException e) {
-        logger.debug("No access to getDefaultReplication(Path) on "
-            + "FileSystem implementation -- HADOOP-8014 not available; " +
-            "className = " + fsClass.getName() + "; err = " + e);
-      }
-    }
-    if (m != null) {
-      logger.debug("Using FileSystem.getDefaultReplication(Path) from " +
-          "HADOOP-8014");
-    }
-    return m;
-  }
-
-  private Method reflectHflushOrSync(FSDataOutputStream os) {
-    Method m = null;
-    if(os != null) {
-      Class<?> fsDataOutputStreamClass = os.getClass();
-      try {
-        m = fsDataOutputStreamClass.getMethod("hflush");
-      } catch (NoSuchMethodException ex) {
-        logger.debug("HFlush not found. Will use sync() instead");
-        try {
-          m = fsDataOutputStreamClass.getMethod("sync");
-        } catch (Exception ex1) {
-          String msg = "Neither hflush not sync were found. That seems to be " +
-            "a problem!";
-          logger.error(msg);
-          throw new FlumeException(msg, ex1);
-        }
-      }
-    }
-    return m;
-  }
+//
+//  /**
+//   * Find the 'getNumCurrentReplicas' on the passed <code>os</code> stream.
+//   * @return Method or null.
+//   */
+//  private Method reflectGetNumCurrentReplicas(FSDataOutputStream os) {
+//    Method m = null;
+//    if (os != null) {
+//      Class<? extends OutputStream> wrappedStreamClass = os.getWrappedStream()
+//          .getClass();
+//      try {
+//        m = wrappedStreamClass.getDeclaredMethod("getNumCurrentReplicas",
+//            new Class<?>[] {});
+//        m.setAccessible(true);
+//      } catch (NoSuchMethodException e) {
+//        logger.info("FileSystem's output stream doesn't support"
+//            + " getNumCurrentReplicas; --HDFS-826 not available; fsOut="
+//            + wrappedStreamClass.getName() + "; err=" + e);
+//      } catch (SecurityException e) {
+//        logger.info("Doesn't have access to getNumCurrentReplicas on "
+//            + "FileSystems's output stream --HDFS-826 not available; fsOut="
+//            + wrappedStreamClass.getName(), e);
+//        m = null; // could happen on setAccessible()
+//      }
+//    }
+//    if (m != null) {
+//      logger.debug("Using getNumCurrentReplicas--HDFS-826");
+//    }
+//    return m;
+//  }
+//
+//  /**
+//   * Find the 'getDefaultReplication' method on the passed <code>fs</code>
+//   * FileSystem that takes a Path argument.
+//   * @return Method or null.
+//   */
+//  private Method reflectGetDefaultReplication(FileSystem fileSystem) {
+//    Method m = null;
+//    if (fileSystem != null) {
+//      Class<?> fsClass = fileSystem.getClass();
+//      try {
+//        m = fsClass.getMethod("getDefaultReplication",
+//            new Class<?>[] { Path.class });
+//      } catch (NoSuchMethodException e) {
+//        logger.debug("FileSystem implementation doesn't support"
+//            + " getDefaultReplication(Path); -- HADOOP-8014 not available; " +
+//            "className = " + fsClass.getName() + "; err = " + e);
+//      } catch (SecurityException e) {
+//        logger.debug("No access to getDefaultReplication(Path) on "
+//            + "FileSystem implementation -- HADOOP-8014 not available; " +
+//            "className = " + fsClass.getName() + "; err = " + e);
+//      }
+//    }
+//    if (m != null) {
+//      logger.debug("Using FileSystem.getDefaultReplication(Path) from " +
+//          "HADOOP-8014");
+//    }
+//    return m;
+//  }
+//
+//  private Method reflectHflushOrSync(FSDataOutputStream os) {
+//    Method m = null;
+//    if(os != null) {
+//      Class<?> fsDataOutputStreamClass = os.getClass();
+//      try {
+//        m = fsDataOutputStreamClass.getMethod("hflush");
+//      } catch (NoSuchMethodException ex) {
+//        logger.debug("HFlush not found. Will use sync() instead");
+//        try {
+//          m = fsDataOutputStreamClass.getMethod("sync");
+//        } catch (Exception ex1) {
+//          String msg = "Neither hflush not sync were found. That seems to be " +
+//            "a problem!";
+//          logger.error(msg);
+//          throw new FlumeException(msg, ex1);
+//        }
+//      }
+//    }
+//    return m;
+//  }
 
   /**
    * If hflush is available in this version of HDFS, then this method calls
@@ -261,18 +255,10 @@ public abstract class AbstractHDFSWriter implements HDFSWriter {
     try {
       // At this point the refHflushOrSync cannot be null,
       // since register method would have thrown if it was.
-      this.refHflushOrSync.invoke(os);
-    } catch (InvocationTargetException e) {
-      String msg = "Error while trying to hflushOrSync!";
-      logger.error(msg);
-      Throwable cause = e.getCause();
-      if(cause != null && cause instanceof IOException) {
-        throw (IOException)cause;
-      }
-      throw new FlumeException(msg, e);
+      os.hflush();
     } catch (Exception e) {
       String msg = "Error while trying to hflushOrSync!";
-      logger.error(msg);
+      logger.error("Error while trying to hflushOrSync:",e);
       throw new FlumeException(msg, e);
     }
   }

@@ -64,7 +64,7 @@ class BucketWriter {
   /**
    * This lock ensures that only one thread can open a file at a time.
    */
-  private static final Integer staticLock = new Integer(1);
+//  private static final Integer staticLock = new Integer(1);
   private Method isClosedMethod = null;
 
   private HDFSWriter writer;
@@ -213,13 +213,13 @@ class BucketWriter {
     // open() must be called by one thread at a time in the JVM.
     // NOTE: tried synchronizing on the underlying Kerberos principal previously
     // which caused deadlocks. See FLUME-1231.
-    synchronized (staticLock) {
+//    synchronized (staticLock) {
       checkAndThrowInterruptedException();
 
       try {
         long counter = fileExtensionCounter.incrementAndGet();
 
-        String fullFileName = fileName + "." + counter;
+        String fullFileName = fileName + "_" + counter;
 
         if (fileSuffix != null && fileSuffix.length() > 0) {
           fullFileName += fileSuffix;
@@ -263,7 +263,7 @@ class BucketWriter {
         } else {
           throw Throwables.propagate(ex);
         }
-      }
+//      }
     }
     isClosedMethod = getRefIsClosed();
     sinkCounter.incrementConnectionCreatedCount();
