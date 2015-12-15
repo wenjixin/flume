@@ -20,18 +20,19 @@ package org.apache.flume.sink.hdfs;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TimeZone;
 import java.util.Map.Entry;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import com.google.common.annotations.VisibleForTesting;
 import org.apache.flume.Channel;
 import org.apache.flume.Clock;
 import org.apache.flume.Context;
@@ -40,7 +41,6 @@ import org.apache.flume.EventDeliveryException;
 import org.apache.flume.SystemClock;
 import org.apache.flume.Transaction;
 import org.apache.flume.auth.FlumeAuthenticationUtil;
-import org.apache.flume.auth.FlumeAuthenticator;
 import org.apache.flume.auth.PrivilegedExecutor;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.formatter.output.BucketPath;
@@ -54,6 +54,7 @@ import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -98,7 +99,6 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
   private static final int defaultThreadPoolSize = 10;
   private static final int defaultRollTimerPoolSize = 1;
 
-
   private final HDFSWriterFactory writerFactory;
   private WriterLinkedHashMap sfWriters;
 
@@ -138,7 +138,6 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
   private long retryInterval;
   private int tryCount;
   private PrivilegedExecutor privExecutor;
-
 
   /*
    * Extended Java LinkedHashMap for open file handle LRU queue.
@@ -300,7 +299,7 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
       sinkCounter = new SinkCounter(getName());
     }
   }
-
+  
   private static boolean codecMatches(Class<? extends CompressionCodec> cls,
       String codecName) {
     String simpleName = cls.getSimpleName();
@@ -376,13 +375,14 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
           break;
         }
 
-        // reconstruct the path name by substituting place holders
-        String realPath = BucketPath.escapeString(filePath, event.getHeaders(),
-            timeZone, needRounding, roundUnit, roundValue, useLocalTime);
-        String realName = BucketPath.escapeString(fileName, event.getHeaders(),
-          timeZone, needRounding, roundUnit, roundValue, useLocalTime);
-
+        String[] paths = getHadoopLogPath(filePath, event.getHeaders(), useLocalTime, timeZone);
+        
+        String realPath = paths[0];
+        
+        String realName = paths[1] + "-" + fileName;
+        
         String lookupPath = realPath + DIRECTORY_DELIMITER + realName;
+        
         BucketWriter bucketWriter;
         HDFSWriter hdfsWriter = null;
         // Callback to remove the reference to the bucket writer from the
@@ -568,4 +568,98 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
   int getTryCount() {
     return tryCount;
   }
+
+  /**
+   * 拼接路径:</p>
+   * path: /user/hdf/rawlog/${category}/%Y_%m_%d/%H</p>
+   * fileName:${category}-%{host}-%{pid}-%Y_%m_%d_%H-%Y%m%d%H%{minf}</p>
+   * 数据集-hostname-pid-小时-写入时的第几个五分钟</p>
+   * @param filePath
+   * @param headers
+   * @param useLocalTimeStamp
+   * @param timeZone
+   * @return
+   */
+  public static String[] getHadoopLogPath(String filePath, Map<String, String> headers,boolean useLocalTimeStamp, TimeZone timeZone) {
+      String []paths = new String[2];
+      Calendar calendar = null;
+      if(timeZone == null){
+          calendar = Calendar.getInstance();
+      }else{
+          calendar = Calendar.getInstance(timeZone); 
+      }
+      
+      if(!useLocalTimeStamp){
+          calendar.setTimeInMillis(Long.valueOf(headers.get("timestamp")));
+      }
+      
+      String year = String.valueOf(calendar.get(Calendar.YEAR));
+      String month = convertInt2StrFormatter(calendar.get(Calendar.MONTH) + 1);
+      String day = convertInt2StrFormatter(calendar.get(Calendar.DAY_OF_MONTH));
+      String hour = convertInt2StrFormatter(calendar.get(Calendar.HOUR_OF_DAY));
+      int minf = calendar.get(Calendar.MINUTE)/5+calendar.get(Calendar.HOUR_OF_DAY)*12;
+      
+      String minfStr = String.valueOf(minf);
+      if(minf>=0&&minf<10){
+          minfStr = "00"+minfStr;
+      }
+      if(minf>=10&&minf<100){
+          minfStr = "0"+minfStr;
+      }
+      
+      
+      StringBuilder realPath = new StringBuilder();
+      StringBuilder realFileName = new StringBuilder();
+      
+      realPath.append(filePath);
+      if ( !filePath.endsWith("/") ) {
+          realPath.append("/");
+      }
+      realPath.append(headers.get("category"));
+      realPath.append("/").append(year);
+      realPath.append("_").append(month);
+      realPath.append("_").append(day);
+      realPath.append("/").append(hour);
+      
+      paths[0] = realPath.toString();
+      
+      
+      realFileName.append(headers.get("category")).append("-")
+                  .append(headers.get("host")).append("-")
+                  .append(headers.get("pid")).append("-")
+                  .append(year).append("_")
+                  .append(month).append("_")
+                  .append(day).append("_")
+                  .append(hour).append("-")
+                  .append(year).append(month).append(day).append(hour)
+                  .append(minfStr);
+      paths[1] = realFileName.toString();
+      return paths;
+  }
+  
+  public static String convertInt2StrFormatter(int digit){
+      StringBuilder builder = new StringBuilder();
+      if(digit<10){
+          builder.append("0").append(digit);
+      }else{
+          builder.append(digit);
+      }
+      return builder.toString();
+  }
+  
+  
+  public static void main(String[] args) {
+      Map<String, String> headers = new HashMap<String, String>();
+      
+      headers.put("category", "www_diptest1234accesskey_flumetest");
+      headers.put("host", "10.13.4.44");
+      headers.put("pid", "1234");
+      headers.put("timestamp", String.valueOf(System.currentTimeMillis()-13*60*1000L));
+      long st = System.currentTimeMillis();
+      for(int i =0 ;i<5000000;i++){
+          getHadoopLogPath("/user/hdfs/rawlog", headers, true, null);
+      }
+      System.out.println(5000000/((System.currentTimeMillis()-st)/1000) +"s/per");
+      System.out.println(Arrays.toString(getHadoopLogPath("/user/hdfs/rawlog", headers, false, null)));
+}
 }
