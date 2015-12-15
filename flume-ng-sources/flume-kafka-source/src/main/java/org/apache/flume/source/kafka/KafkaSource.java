@@ -25,17 +25,21 @@ import java.util.Properties;
 import kafka.consumer.ConsumerIterator;
 import kafka.consumer.ConsumerTimeoutException;
 import kafka.consumer.KafkaStream;
+import kafka.consumer.TopicFilter;
+import kafka.consumer.Whitelist;
 import kafka.javaapi.consumer.ConsumerConnector;
-
 import kafka.message.MessageAndMetadata;
-import org.apache.flume.*;
+
+import org.apache.flume.Context;
+import org.apache.flume.Event;
+import org.apache.flume.EventDeliveryException;
+import org.apache.flume.FlumeException;
+import org.apache.flume.PollableSource;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.conf.ConfigurationException;
 import org.apache.flume.event.EventBuilder;
-import org.apache.flume.instrumentation.SourceCounter;
 import org.apache.flume.instrumentation.kafka.KafkaSourceCounter;
 import org.apache.flume.source.AbstractSource;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -105,7 +109,7 @@ public class KafkaSource extends AbstractSource
           headers = new HashMap<String, String>();
           headers.put(KafkaSourceConstants.TIMESTAMP,
                   String.valueOf(System.currentTimeMillis()));
-          headers.put(KafkaSourceConstants.TOPIC, topic);
+          headers.put(KafkaSourceConstants.TOPIC, messageAndMetadata.topic());
           if (kafkaKey != null) {
             headers.put(KafkaSourceConstants.KEY, new String(kafkaKey));
           }
@@ -204,18 +208,17 @@ public class KafkaSource extends AbstractSource
               "Flume agent can connect to it.", e);
     }
 
-    Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
-    // We always have just one topic being read by one thread
-    topicCountMap.put(topic, 1);
+//    Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
+//    // We always have just one topic being read by one thread
+//    topicCountMap.put(topic, 1);
 
     // Get the message iterator for our topic
     // Note that this succeeds even if the topic doesn't exist
     // in that case we simply get no messages for the topic
     // Also note that currently we only support a single topic
     try {
-      Map<String, List<KafkaStream<byte[], byte[]>>> consumerMap =
-              consumer.createMessageStreams(topicCountMap);
-      List<KafkaStream<byte[], byte[]>> topicList = consumerMap.get(topic);
+      TopicFilter topicFilter = new Whitelist(topic);  
+      List<KafkaStream<byte[], byte[]>> topicList = consumer.createMessageStreamsByFilter(topicFilter, 1);      
       KafkaStream<byte[], byte[]> stream = topicList.get(0);
       it = stream.iterator();
     } catch (Exception e) {
