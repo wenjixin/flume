@@ -379,7 +379,7 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
         
         String realPath = paths[0];
         
-        String realName = paths[1] + "-" + fileName;
+        String realName = paths[1];
         
         String lookupPath = realPath + DIRECTORY_DELIMITER + realName;
         

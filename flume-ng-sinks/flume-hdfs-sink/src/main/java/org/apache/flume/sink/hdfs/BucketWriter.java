@@ -77,7 +77,7 @@ class BucketWriter {
   private final ScheduledExecutorService timedRollerPool;
   private final PrivilegedExecutor proxyUser;
 
-  private final AtomicLong fileExtensionCounter;
+  private static final AtomicLong FILE_COUNTER = new AtomicLong(0);
 
   private long eventCounter;
   private long processSize;
@@ -145,7 +145,7 @@ class BucketWriter {
     this.onCloseCallbackPath = onCloseCallbackPath;
     this.callTimeout = callTimeout;
     this.callTimeoutPool = callTimeoutPool;
-    fileExtensionCounter = new AtomicLong(clock.currentTimeMillis());
+//    fileExtensionCounter = new AtomicLong(clock.currentTimeMillis());
 
     this.retryInterval = retryInterval;
     this.maxRenameTries = maxCloseTries;
@@ -217,7 +217,7 @@ class BucketWriter {
       checkAndThrowInterruptedException();
 
       try {
-        long counter = fileExtensionCounter.incrementAndGet();
+        long counter = FILE_COUNTER.incrementAndGet();
 
         String fullFileName = fileName + "_" + counter;
 
