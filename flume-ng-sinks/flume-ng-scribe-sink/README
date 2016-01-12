@@ -1,0 +1,1 @@
+A flume-ng sink that writes to a scribe bus. Useful when migrating from scribe to flume-ng, where scribe consumer migration occurs over time.
