@@ -1,5 +1,6 @@
 package org.apache.flume.sink.scribe;
 
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +38,12 @@ public class DipScribeSink extends AbstractSink implements Configurable {
 	private String host;
 	private int port;
 	private TTransport trans;
+	
+	private int connectTimeout;
+	private int soTimeout;
+	
+	private int DEFAULT_CONNECT_TIMEOUT = 10;
+	private int DEFAULT_SO_TIMEOUT = 100;
 
 	@Override
 	public void configure(Context context) {
@@ -58,6 +65,9 @@ public class DipScribeSink extends AbstractSink implements Configurable {
 
 		host = context.getString(ScribeSinkConfigurationConstants.CONFIG_SCRIBE_HOST);
 		port = context.getInteger(ScribeSinkConfigurationConstants.CONFIG_SCRIBE_PORT);
+		
+		connectTimeout = context.getInteger(ScribeSinkConfigurationConstants.CONFIG_SCRIBE_TIMEOUT, DEFAULT_CONNECT_TIMEOUT)*1000;
+		soTimeout = context.getInteger(ScribeSinkConfigurationConstants.CONFIG_SCRIBE_SO_TIMEOUT, DEFAULT_SO_TIMEOUT)*1000;
 
 	}
 
@@ -166,10 +176,13 @@ public class DipScribeSink extends AbstractSink implements Configurable {
 	}
 
 	private void createConnection() throws Exception {
-
-		trans = new TFramedTransport(new TSocket(new Socket(host, port)));
+		
+		Socket socket = new Socket();
+		socket.connect(new InetSocketAddress(host, port), connectTimeout);
+		socket.setSoTimeout(soTimeout);
+		trans = new TFramedTransport(new TSocket(socket));
 		client = new Scribe.Client(new TBinaryProtocol(trans, false, false));
-
+		
 	}
 
 	private void closeConnection() {

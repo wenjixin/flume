@@ -41,9 +41,13 @@ public class ScribeSinkConfigurationConstants {
      */
     public static final String CONFIG_SCRIBE_PORT = "scribe.port";
     /**
-     * Scribe port to connect to.
+     * Scribe connect timeout to.
      */
     public static final String CONFIG_SCRIBE_TIMEOUT = "scribe.timeout";
+    /**
+     * Scribe sotimeout
+     */
+    public static final String CONFIG_SCRIBE_SO_TIMEOUT = "scribe.sotimeout";
     /**
      * Flume Header Key that maps to a Scribe Category.
      */
