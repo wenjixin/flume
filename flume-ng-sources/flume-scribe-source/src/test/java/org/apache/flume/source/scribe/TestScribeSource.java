@@ -36,7 +36,10 @@ import org.junit.Test;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  *
@@ -56,10 +59,16 @@ public class TestScribeSource {
 
   @BeforeClass
   public static void setUpClass() throws Exception {
-    port = findFreePort();
+    port = 1463;
     Context context = new Context();
     context.put("port", String.valueOf(port));
 
+    Map<String, String> parms = new HashMap<String, String>();
+    parms.put("capacity", "1000000");
+    parms.put("transactionCapacity", "50000");
+    context.putAll(parms);
+    
+    
     scribeSource = new ScribeSource();
     scribeSource.setName("Scribe Source");
 
@@ -78,6 +87,11 @@ public class TestScribeSource {
 
     scribeSource.setChannelProcessor(new ChannelProcessor(rcs));
     scribeSource.start();
+  }
+  
+  @Test
+  public void testStart() throws InterruptedException{
+	  TimeUnit.MINUTES.sleep(100);
   }
 
   @Test

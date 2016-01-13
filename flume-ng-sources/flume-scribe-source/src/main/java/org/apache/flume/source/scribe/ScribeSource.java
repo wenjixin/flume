@@ -169,7 +169,11 @@ public class ScribeSource extends AbstractSource implements
 
           if (events.size() > 0) {
             getChannelProcessor().processEventBatch(events);
+            
+            System.out.println(new String(events.get(0).getBody()));
           }
+          
+          System.out.println("list:"+list.size());
 
           sourceCounter.addToEventAcceptedCount(list.size());
           return ResultCode.OK;
