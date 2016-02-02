@@ -19,10 +19,13 @@
 package org.apache.flume.sink.kafka;
 
 import com.google.common.base.Throwables;
+import com.weibo.dip.flume.extension.rpc.RpcClientFacade;
+
 import kafka.javaapi.producer.Producer;
 import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
 import org.apache.flume.*;
+import org.apache.flume.Sink.Status;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.instrumentation.kafka.KafkaSinkCounter;
 import org.apache.flume.sink.AbstractSink;
@@ -30,6 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Properties;
+import java.util.Map.Entry;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
@@ -77,6 +81,11 @@ public class KafkaSink extends AbstractSink implements Configurable {
   private KafkaSinkCounter counter;
 
 
+  // add fluem rpc client
+  private RpcClientFacade client;
+  private boolean isBackupEnable;
+  private List<Event> backupBatchEvents;
+  
   @Override
   public Status process() throws EventDeliveryException {
     Status result = Status.READY;
@@ -93,6 +102,9 @@ public class KafkaSink extends AbstractSink implements Configurable {
       transaction.begin();
 
       messageList.clear();
+      if(isBackupEnable){
+    	  backupBatchEvents.clear();
+      }
       for (; processedEvents < batchSize; processedEvents += 1) {
         event = channel.take();
 
@@ -120,7 +132,9 @@ public class KafkaSink extends AbstractSink implements Configurable {
         KeyedMessage<String, byte[]> data = new KeyedMessage<String, byte[]>
           (eventTopic, eventKey, eventBody);
         messageList.add(data);
-
+        if(isBackupEnable){
+        	backupBatchEvents.add(event);
+        }
       }
 
       // publish batch and commit.
@@ -135,6 +149,17 @@ public class KafkaSink extends AbstractSink implements Configurable {
       transaction.commit();
 
     } catch (Exception ex) {
+    	
+		if(isBackupEnable){
+			try{
+				logger.debug("write error", ex);
+				client.sendDataToFlume(backupBatchEvents);
+				transaction.commit();
+				return Status.READY;			
+			}catch(Exception e){
+				// seed to backup fail,just rollback
+			}
+		}
       String errorMsg = "Failed to publish events";
       logger.error("Failed to publish events", ex);
       result = Status.BACKOFF;
@@ -163,6 +188,13 @@ public class KafkaSink extends AbstractSink implements Configurable {
     ProducerConfig config = new ProducerConfig(kafkaProps);
     producer = new Producer<String, byte[]>(config);
     counter.start();
+    
+    if(isBackupEnable){
+    	if(client!=null){
+    		client.init();
+    	}
+    }
+    
     super.start();
   }
 
@@ -171,6 +203,13 @@ public class KafkaSink extends AbstractSink implements Configurable {
     producer.close();
     counter.stop();
     logger.info("Kafka Sink {} stopped. Metrics: {}", getName(), counter);
+    
+    if(isBackupEnable){
+    	if(client!=null){
+    		client.cleanUp();
+    	}
+    }
+    
     super.stop();
   }
 
@@ -216,6 +255,24 @@ public class KafkaSink extends AbstractSink implements Configurable {
 
     if (counter == null) {
       counter = new KafkaSinkCounter(getName());
+    }
+    
+    isBackupEnable = context.getBoolean("isBackupEnable",false);
+    
+    if(isBackupEnable){
+    	
+    	Properties clientProps = new Properties();
+        String hostname = context.getString("hostname");
+        int port = context.getInteger("port");
+        int retryCount = context.getInteger("retryCount",3);
+        for (Entry<String, String> entry: context.getParameters().entrySet()) {
+            clientProps.setProperty(entry.getKey(), entry.getValue());
+        }
+        client = new RpcClientFacade(hostname, port,retryCount,clientProps);
+        
+        logger.debug("backup feature is enable,remote is {} {}",hostname,port);
+        
+        backupBatchEvents = new ArrayList<Event>(batchSize);
     }
   }
 }

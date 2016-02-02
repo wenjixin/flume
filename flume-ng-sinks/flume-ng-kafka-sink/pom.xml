@@ -73,6 +73,13 @@
       <groupId>org.apache.kafka</groupId>
       <artifactId>kafka_2.10</artifactId>
     </dependency>
+    
+    <dependency>
+    	<groupId>com.weibo.dip</groupId>
+		<artifactId>flume-dip-extension</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+    </dependency>
+    
   </dependencies>
 
 </project>

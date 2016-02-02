@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Map.Entry;
 import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
@@ -58,6 +59,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.weibo.dip.flume.extension.rpc.RpcClientFacade;
 
 public class HDFSEventSink extends AbstractSink implements Configurable {
   public interface WriterCallback {
@@ -138,6 +140,11 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
   private long retryInterval;
   private int tryCount;
   private PrivilegedExecutor privExecutor;
+  
+  // add fluem rpc client
+  private RpcClientFacade client;
+  private boolean isBackupEnable;
+  private List<Event> backupBatchEvents;
 
   /*
    * Extended Java LinkedHashMap for open file handle LRU queue.
@@ -298,6 +305,26 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
     if (sinkCounter == null) {
       sinkCounter = new SinkCounter(getName());
     }
+    
+    isBackupEnable = context.getBoolean("isBackupEnable",false);
+    
+    if(isBackupEnable){
+    	
+    	
+    	Properties clientProps = new Properties();
+        String hostname = context.getString("hostname");
+        int port = context.getInteger("port");
+        int retryCount = context.getInteger("retryCount",3);
+        
+        for (Entry<String, String> entry: context.getParameters().entrySet()) {
+            clientProps.setProperty(entry.getKey(), entry.getValue());
+        }
+        
+        LOG.debug("backup feature is enable,remote is {} {}",hostname,port);
+        
+        client = new RpcClientFacade(hostname, port,retryCount, clientProps);
+        backupBatchEvents = new ArrayList<Event>((int)batchSize);
+    }
   }
   
   private static boolean codecMatches(Class<? extends CompressionCodec> cls,
@@ -369,6 +396,9 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
     transaction.begin();
     try {
       int txnEventCount = 0;
+      if(isBackupEnable){
+    	  backupBatchEvents.clear();
+      }
       for (txnEventCount = 0; txnEventCount < batchSize; txnEventCount++) {
         Event event = channel.take();
         if (event == null) {
@@ -415,6 +445,9 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
 
         // Write the data to HDFS
         try {
+        	if(isBackupEnable){
+        		backupBatchEvents.add(event);
+        	}
           bucketWriter.append(event);
         } catch (BucketClosedException ex) {
           LOG.info("Bucket was closed while trying to append, " +
@@ -451,10 +484,30 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
         return Status.READY;
       }
     } catch (IOException eIO) {
+		if(isBackupEnable){
+			try{
+				LOG.debug("write error", eIO);
+				client.sendDataToFlume(backupBatchEvents);
+				transaction.commit();
+				return Status.READY;
+			}catch(Exception e){
+				// seed to backup fail,just rollback
+			}
+		}
       transaction.rollback();
       LOG.warn("HDFS IO error", eIO);
       return Status.BACKOFF;
     } catch (Throwable th) {
+		if(isBackupEnable){
+			try{
+				LOG.debug("write error", th);
+				client.sendDataToFlume(backupBatchEvents);
+				transaction.commit();
+				return Status.READY;
+			}catch(Exception e){
+				// seed to backup fail,just rollback
+			}
+		}
       transaction.rollback();
       LOG.error("process failed", th);
       if (th instanceof Error) {
@@ -525,6 +578,13 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
       sfWriters = null;
     }
     sinkCounter.stop();
+    
+    if(isBackupEnable){
+    	if(client!=null){
+    		client.cleanUp();
+    	}
+    }
+    
     super.stop();
   }
 
@@ -540,6 +600,13 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
 
     this.sfWriters = new WriterLinkedHashMap(maxOpenFiles);
     sinkCounter.start();
+    
+    if(isBackupEnable){
+    	if(client!=null){
+    		client.init();
+    	}
+    }
+    
     super.start();
   }
 

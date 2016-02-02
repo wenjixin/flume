@@ -80,7 +80,7 @@ public class ScribeSinkTest {
 
 	public static void main(String[] args)
 			throws UnknownHostException, IOException, InterruptedException, TException {
-		String host = "10.13.56.52";
+		String host = "10.13.4.45";
 		int port = 1466;
 
 		Scribe.Client client;
@@ -93,8 +93,8 @@ public class ScribeSinkTest {
 
 			List<LogEntry> logEntries = new ArrayList<LogEntry>();
 
-			for (int i = 0; i < 1000; i++) {
-				logEntries.add(new LogEntry("app_weibomobilekafka1234_sinatrans",ByteBuffer.wrap("Hello".getBytes())));
+			for (int i = 0; i < 100000; i++) {
+				logEntries.add(new LogEntry("app_saesinacomkafka12345_nginx",ByteBuffer.wrap("Hello".getBytes())));
 			}
 			client.Log(logEntries);
 

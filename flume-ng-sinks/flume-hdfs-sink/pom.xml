@@ -99,6 +99,12 @@ limitations under the License.
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
     </dependency>
+    
+    <dependency>
+    	<groupId>com.weibo.dip</groupId>
+		<artifactId>flume-dip-extension</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+    </dependency>
 
   </dependencies>
 
