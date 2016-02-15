@@ -18,8 +18,6 @@
 
 package org.apache.flume.sink.kafka;
 
-import kafka.serializer.StringDecoder;
-
 public class KafkaSinkConstants {
 
   public static final String PROPERTY_PREFIX = "kafka.";
@@ -44,4 +42,9 @@ public class KafkaSinkConstants {
   public static final String DEFAULT_KEY_SERIALIZER =
           "kafka.serializer.StringEncoder";
   public static final String DEFAULT_REQUIRED_ACKS = "1";
+  
+  //kafka max message size,in Byte
+  public static final String MAX_MESSAGE_SZIE = "maxMessageSize";
+  
+  public static final long DEFAULT_MAX_MESSAGE_SZIE = 1000000;
 }

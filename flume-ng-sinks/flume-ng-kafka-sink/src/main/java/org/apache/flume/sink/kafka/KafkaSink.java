@@ -79,7 +79,8 @@ public class KafkaSink extends AbstractSink implements Configurable {
   private int batchSize;
   private List<KeyedMessage<String, byte[]>> messageList;
   private KafkaSinkCounter counter;
-
+  
+  private long maxMagSize;
 
   // add fluem rpc client
   private RpcClientFacade client;
@@ -128,6 +129,9 @@ public class KafkaSink extends AbstractSink implements Configurable {
           logger.debug("event #{}", processedEvents);
         }
 
+        if(event.getBody().length > maxMagSize){
+        	continue;
+        }
         // create a message and add to buffer
         KeyedMessage<String, byte[]> data = new KeyedMessage<String, byte[]>
           (eventTopic, eventKey, eventBody);
@@ -235,7 +239,9 @@ public class KafkaSink extends AbstractSink implements Configurable {
     messageList =
       new ArrayList<KeyedMessage<String, byte[]>>(batchSize);
     logger.debug("Using batch size: {}", batchSize);
-
+    
+    maxMagSize = context.getLong(KafkaSinkConstants.MAX_MESSAGE_SZIE,KafkaSinkConstants.DEFAULT_MAX_MESSAGE_SZIE);
+    
     topic = context.getString(KafkaSinkConstants.TOPIC,
       KafkaSinkConstants.DEFAULT_TOPIC);
     if (topic.equals(KafkaSinkConstants.DEFAULT_TOPIC)) {
