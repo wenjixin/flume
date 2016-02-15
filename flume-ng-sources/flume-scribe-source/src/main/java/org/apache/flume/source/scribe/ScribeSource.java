@@ -19,7 +19,6 @@
 
 package org.apache.flume.source.scribe;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -36,7 +35,6 @@ import org.apache.flume.source.scribe.Scribe.Iface;
 import org.apache.thrift.TException;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.server.THsHaServer;
-import org.apache.thrift.server.TNonblockingServer;
 import org.apache.thrift.server.TServer;
 import org.apache.thrift.transport.TFramedTransport;
 import org.apache.thrift.transport.TNonblockingServerSocket;
@@ -169,12 +167,8 @@ public class ScribeSource extends AbstractSource implements
 
           if (events.size() > 0) {
             getChannelProcessor().processEventBatch(events);
-            
-            System.out.println(new String(events.get(0).getBody()));
           }
           
-          System.out.println("list:"+list.size());
-
           sourceCounter.addToEventAcceptedCount(list.size());
           return ResultCode.OK;
         } catch (Exception e) {
